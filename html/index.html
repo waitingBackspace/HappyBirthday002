@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生日快乐 - 小姨</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #f0f8ff, #e6e6fa);
+            font-family: 'Arial', sans-serif;
+        }
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .birthday-container {
+            position: absolute;
+            top: 35%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+        }
+        .birthday-text {
+            font-size: 4vw;
+            font-weight: bold;
+            color: #ff69b4;
+            text-shadow: 0 0 5px #ff1493, 0 0 10px #ff1493, 0 0 15px #ff1493, 0 0 20px #ff1493;
+            text-transform: uppercase;
+            letter-spacing: 0.5em;
+            line-height: 1.5;
+        }
+        .audio-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 3;
+        }
+        button {
+            background: rgba(255, 105, 180, 0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 30px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: rgba(255, 105, 180, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="birthday-container">
+        <div class="birthday-text">生日快乐<br>祝小姨生日快乐！</div>
+    </div>
+    <div class="audio-controls">
+        <audio id="audio" loop>
+            <source src="/api/file/lM3ZhBOQ Craig_Taylor_Acoustic_Jazz_Background_Music.mp3" type="audio/mpeg">
+            Your browser does not support the audio element.
+        </audio>
+        <button id="playButton">播放音乐</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const playButton = document.getElementById('playButton');
+        const audio = document.getElementById('audio');
+        const birthdayText = document.querySelector('.birthday-text');
+        
+        // 设置画布大小
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // 烟花粒子类
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = (Math.random() - 0.5) * 15;
+                this.speedY = (Math.random() - 0.5) * 15;
+                this.alpha = 1;
+                this.life = Math.random() * 80 + 120;
+            }
+            
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.alpha -= 0.03;
+                this.life--;
+                this.speedY += 0.05; // 重力效果
+            }
+            
+            draw() {
+                if (this.alpha <= 0) return;
+                
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.fillStyle = this.color;
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 添加拖尾效果
+                ctx.globalAlpha = this.alpha * 0.3;
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.size / 2;
+                ctx.moveTo(this.x - this.speedX * 2, this.y - this.speedY * 2);
+                ctx.lineTo(this.x, this.y);
+                ctx.stroke();
+            }
+        }
+        
+        // 烟花类
+        class Firework {
+            constructor(x, y, targetX, targetY, color) {
+                this.x = x;
+                this.y = y;
+                this.targetX = targetX;
+                this.targetY = targetY;
+                this.color = color;
+                this.size = 2;
+                this.speedX = 0;
+                this.speedY = 0;
+                this.accelerationX = 0;
+                this.accelerationY = 0.05; // 重力效果
+                this.exploded = false;
+                this.maxLife = Math.random() * 100 + 150;
+                this.life = this.maxLife;
+                
+                // 计算朝向目标位置的初始速度
+                const angle = Math.atan2(targetY - y, targetX - x);
+                this.speedX = Math.cos(angle) * 4;
+                this.speedY = Math.sin(angle) * 4;
+            }
+            
+            update() {
+                if (!this.exploded) {
+                    this.x += this.speedX;
+                    this.y += this.speedY;
+                    this.speedY += this.accelerationY;
+                    this.life--;
+                    
+                    // 当烟花到达目标位置或生命周期结束时爆炸
+                    const distanceToTarget = Math.hypot(this.targetX - this.x, this.targetY - this.y);
+                    if (this.life <= 0 || distanceToTarget < 10) {
+                        this.exploded = true;
+                        createParticles(this.x, this.y, this.color);
+                    }
+                }
+            }
+            
+            draw() {
+                ctx.globalAlpha = 1;
+                ctx.beginPath();
+                ctx.fillStyle = this.color;
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        let fireworks = [];
+        let particles = [];
+        let lastTime = 0;
+        
+        // 创建烟花粒子
+        function createParticles(x, y, color) {
+            const particleCount = 250; // 增加粒子数量
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+        
+        // 创建烟花
+        function createFirework(startX, startY, targetX, targetY, color) {
+            fireworks.push(new Firework(startX, startY, targetX, targetY, color));
+        }
+        
+        // 获取文本每个字符的位置
+        function getTextCharacterPositions() {
+            const positions = [];
+            const textLines = birthdayText.innerText.split('<br>');
+            
+            for (let i = 0; i < textLines.length; i++) {
+                const line = textLines[i];
+                const lineHeight = birthdayText.offsetHeight / textLines.length;
+                const y = birthdayText.offsetTop + (i * lineHeight) + lineHeight / 2;
+                
+                for (let j = 0; j < line.length; j++) {
+                    const char = line[j];
+                    const charWidth = ctx.measureText(char).width;
+                    const x = birthdayText.offsetLeft + ctx.measureText(line.substring(0, j)).width + charWidth / 2;
+                    positions.push({ x, y, char });
+                }
+            }
+            
+            return positions;
+        }
+        
+        // 在文本位置创建烟花
+        function createFireworksOnText() {
+            const textPositions = getTextCharacterPositions();
+            // 使用更鲜艳的颜色
+            const colors = ['#FF69B4', '#FF1493', '#FFC0CB', '#FFB6C1', '#FF6347', '#FF4500', '#FFD700', '#FFA500', '#00BFFF', '#32CD32', '#9370DB', '#4682B4', '#FF7F50', '#BA55D3', '#CD5C5C', '#FF5733', '#33FF57', '#3357FF', '#F3FF33', '#FF33F3', '#33FFF3', '#FF3333', '#3333FF', '#33CC33', '#CC33CC'];
+            
+            textPositions.forEach(pos => {
+                // 为每个字符创建多个烟花，均匀分布在屏幕下方
+                for (let i = 0; i < 10; i++) { // 增加每个字符的烟花数量
+                    const delay = Math.random() * 1500;
+                    setTimeout(() => {
+                        const color = colors[Math.floor(Math.random() * colors.length)];
+                        // 从屏幕下方均匀位置发射烟花到文字位置
+                        const startX = Math.random() * canvas.width * 0.9 + canvas.width * 0.05; // 在屏幕左右两侧留出空间
+                        const startY = canvas.height * 0.3; // 从屏幕下方稍高位置发射
+                        createFirework(startX, startY, pos.x, pos.y - 300, color); // 目标位置稍微向上调整
+                    }, delay);
+                }
+            });
+        }
+        
+        // 动画循环
+        function animate(time) {
+            requestAnimationFrame(animate);
+            
+            // 清除画布
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 更新和绘制烟花
+            fireworks.forEach((firework, index) => {
+                firework.update();
+                firework.draw();
+                
+                // 移除已爆炸的烟花
+                if (firework.exploded) {
+                    fireworks.splice(index, 1);
+                }
+            });
+            
+            // 更新和绘制粒子
+            particles.forEach((particle, index) => {
+                particle.update();
+                particle.draw();
+                
+                // 移除消失的粒子
+                if (particle.alpha <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+        
+        // 初始化
+        function init() {
+            createFireworksOnText();
+            animate(0);
+            
+            // 持续创建背景烟花
+            setInterval(() => {
+                const startX = Math.random() * canvas.width * 0.9 + canvas.width * 0.05; // 在屏幕左右两侧留出空间
+                const startY = canvas.height * 0.3; // 从屏幕下方稍高位置发射
+                const targetX = Math.random() * canvas.width;
+                const targetY = Math.random() * canvas.height * 0.2 + canvas.height * 0.1; // 限制烟花高度
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                createFirework(startX, startY, targetX, targetY, color);
+            }, 100); // 减少烟花生成的时间间隔
+        }
+        
+        const colors = ['#FF69B4', '#FF1493', '#FFC0CB', '#FFB6C1', '#FF6347', '#FF4500', '#FFD700', '#FFA500', '#00BFFF', '#32CD32', '#9370DB', '#4682B4', '#FF7F50', '#BA55D3', '#CD5C5C', '#FF5733', '#33FF57', '#3357FF', '#F3FF33', '#FF33F3', '#33FFF3', '#FF3333', '#3333FF', '#33CC33', '#CC33CC'];
+        
+        // 音频播放控制
+        playButton.addEventListener('click', () => {
+            if (audio.paused) {
+                audio.play();
+                playButton.textContent = '暂停音乐';
+            } else {
+                audio.pause();
+                playButton.textContent = '播放音乐';
+            }
+        });
+        
+        // 页面加载时自动播放音乐
+        window.addEventListener('load', () => {
+            // 音频文件路径调整为相对路径
+            audio.src = 'music/music.mp3'; // 确保音频文件在music文件夹中
+            audio.play().catch(error => {
+                console.log('自动播放失败，可能需要用户交互才能播放音频', error);
+                playButton.textContent = '播放音乐';
+            });
+        });
+        
+        // 启动动画
+        init();
+    </script>
+</body>
+</html>
